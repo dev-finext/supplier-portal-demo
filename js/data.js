@@ -3,6 +3,7 @@
 
 const SUPPLIER = {
   name: 'סיריוס',
+  nameEn: 'Sirius',
   id: 8,
 };
 

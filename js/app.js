@@ -4,7 +4,8 @@ const state = {
   screen: 'phone',        // phone | otp | panel
   phone: '',
   activeTab: 'pending',   // pending | approved | cancelled
-  sel: {},                // בחירה מרובה בלשונית ממתינות: { orderId: true }
+  sel: {},                // בחירה מרובה: { orderId: true }
+  confirmMode: 'approve', // approve | cancelAck — מצב המודאל המרוכז
   detailId: null,
   dateMode: 'all',        // all | day | range
   day: '', from: '', to: '',
@@ -37,32 +38,45 @@ function byTab(tab) {
   return state.orders.filter(o => o.status === tab && dateMatch(o));
 }
 
+// השורות הניתנות לבחירה מרובה בלשונית הנוכחית (לפי הסינון הפעיל)
+function selectableRows() {
+  if (state.activeTab === 'pending') return byTab('pending');
+  if (state.activeTab === 'cancelled') return byTab('cancelled').filter(o => o.needsConfirm);
+  return [];
+}
+
+function selectedRows() {
+  return selectableRows().filter(o => state.sel[o.id]);
+}
+
 function statusTag(o) {
   const severe = o.status === 'pending' && o.hours > 24;
   const needsConfirm = o.status === 'cancelled' && o.needsConfirm;
   let cls, label;
   if (o.status === 'pending') {
-    if (severe) { cls = 'tag-overdue'; label = 'מעל 24 שעות'; }
-    else { cls = 'tag-pending'; label = 'ממתין לטיפול'; }
+    if (severe) { cls = 'tag-overdue'; label = t('tagOverdue'); }
+    else { cls = 'tag-pending'; label = t('tagPending'); }
   } else if (o.status === 'approved') {
-    cls = 'tag-approved'; label = 'טופל';
+    cls = 'tag-approved'; label = t('tagApproved');
   } else if (needsConfirm) {
-    cls = 'tag-cancel-confirm'; label = 'בוטל · דרוש אישור';
+    cls = 'tag-cancel-confirm'; label = t('tagCancelNeedsConfirm');
+  } else if (o.cancelResolution === 'rejected') {
+    cls = 'tag-cannot-cancel'; label = t('tagCannotCancel');
   } else {
-    cls = 'tag-cancelled'; label = 'בוטל';
+    cls = 'tag-cancelled'; label = t('tagCancelled');
   }
   return { cls, label, severe, needsConfirm };
 }
 
 function tagHtml(o) {
-  const t = statusTag(o);
-  return `<span class="tag ${t.cls}">${t.label}</span>`;
+  const t2 = statusTag(o);
+  return `<span class="tag ${t2.cls}">${t2.label}</span>`;
 }
 
 function rowClass(o) {
-  const t = statusTag(o);
-  if (t.needsConfirm) return 'row-needs-confirm';
-  if (t.severe) return 'row-severe';
+  const t2 = statusTag(o);
+  if (t2.needsConfirm) return 'row-needs-confirm';
+  if (t2.severe) return 'row-severe';
   return '';
 }
 
@@ -87,30 +101,41 @@ function approveOne(id) {
   }
   delete state.sel[id];
   render();
-  showToast('ההזמנה אושרה לטיפול');
+  showToast(t('toastApproveSingle'));
 }
 
-function approveSelected() {
-  const stamp = nowStamp();
-  let count = 0;
-  state.orders.forEach(o => {
-    if (state.sel[o.id] && o.status === 'pending') {
-      o.status = 'approved';
-      o.approvedAt = stamp;
-      count++;
-    }
-  });
+// אישור קבלת ביטול — ההזמנה נשארת "בוטלה"
+function confirmCancel(id) {
+  const o = state.orders.find(x => x.id === id);
+  if (o) { o.needsConfirm = false; o.cancelResolution = 'confirmed'; }
+  delete state.sel[id];
+  render();
+  showToast(t('toastCancelAck'));
+}
+
+// "לא ניתן לבטל" — אותה פעולה בצד הספק, אך הסטטוס הסופי שונה
+function rejectCancel(id) {
+  const o = state.orders.find(x => x.id === id);
+  if (o) { o.needsConfirm = false; o.cancelResolution = 'rejected'; }
+  delete state.sel[id];
+  render();
+  showToast(t('toastCannotCancel'));
+}
+
+// ביצוע הפעולה המרוכזת מתוך המודאל, לפי המצב הפעיל
+function doBulkConfirm() {
+  const rows = selectedRows();
+  if (state.confirmMode === 'approve') {
+    const stamp = nowStamp();
+    rows.forEach(o => { o.status = 'approved'; o.approvedAt = stamp; });
+    showToast(rows.length === 1 ? t('toastApprovedOne') : t('toastApprovedMany', { n: rows.length }));
+  } else {
+    rows.forEach(o => { o.needsConfirm = false; o.cancelResolution = 'confirmed'; });
+    showToast(rows.length === 1 ? t('toastCancelAck') : t('toastCancelAckMany', { n: rows.length }));
+  }
   state.sel = {};
   $('modal-confirm').hidden = true;
   render();
-  showToast(count === 1 ? 'הזמנה אחת אושרה לטיפול' : `${count} הזמנות אושרו לטיפול`);
-}
-
-function confirmCancel(id) {
-  const o = state.orders.find(x => x.id === id);
-  if (o) o.needsConfirm = false;
-  render();
-  showToast('אישור קבלת הביטול נקלט');
 }
 
 function toggleSel(id) {
@@ -120,20 +145,31 @@ function toggleSel(id) {
 }
 
 function toggleAll() {
-  const vis = byTab('pending');
+  const vis = selectableRows();
   const all = vis.length > 0 && vis.every(o => state.sel[o.id]);
   vis.forEach(o => { if (all) delete state.sel[o.id]; else state.sel[o.id] = true; });
   render();
 }
 
+function openConfirmModal() {
+  if (selectedRows().length === 0) return;
+  state.confirmMode = state.activeTab === 'pending' ? 'approve' : 'cancelAck';
+  $('modal-confirm').hidden = false;
+  render();
+}
+
 function exportExcel() {
   const rows = byTab(state.activeTab);
-  const head = ['מס\' הזמנה', 'תאריך הזמנה', 'שם לקוח', 'אימייל', 'טלפון', 'מוצר', 'מק"ט', 'כמות', 'עיר', 'רחוב', 'תיאור משלוח', 'הערות', 'עלות כולל מע"מ', 'סטטוס'];
-  const label = { pending: 'ממתין', approved: 'טופל', cancelled: 'בוטל' };
+  const head = ['thOrderNo', 'thOrderDate', 'thCustomer', 'fCustEmail', 'fCustPhone', 'thProduct', 'fSku', 'thQty', 'thCity', 'fStreet', 'fShipDesc', 'fShipNotes', 'fTotal', 'thStatus'].map(k => t(k));
+  const statusLabel = o => {
+    if (o.status === 'pending') return t('csvStatusPending');
+    if (o.status === 'approved') return t('csvStatusApproved');
+    return o.cancelResolution === 'rejected' ? t('csvStatusCannotCancel') : t('csvStatusCancelled');
+  };
   const csvCell = v => `"${String(v).replace(/"/g, '""')}"`;
   const lines = [head.map(csvCell).join(',')];
   rows.forEach(o => {
-    lines.push([o.no, o.date, o.cust, o.email, o.phone, o.prod, o.sku, o.qty, o.city, o.street, o.shipDesc, o.notes, o.amt, label[o.status]].map(csvCell).join(','));
+    lines.push([o.no, o.date, o.cust, o.email, o.phone, o.prod, o.sku, o.qty, o.city, o.street, o.shipDesc, o.notes, o.amt, statusLabel(o)].map(csvCell).join(','));
   });
   // BOM כדי שאקסל יזהה עברית ב-UTF-8
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -142,7 +178,7 @@ function exportExcel() {
   a.download = `supplier-orders-${state.activeTab}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
-  showToast('מייצא לאקסל לפי הסינון הנוכחי…');
+  showToast(t('toastExport'));
 }
 
 /* ---------- רינדור ---------- */
@@ -153,6 +189,7 @@ function render() {
   renderCounts();
   renderTabs();
   renderFilters();
+  renderListTools();
   renderBulkBar();
   renderTable();
   renderCards();
@@ -172,8 +209,8 @@ function renderCounts() {
 }
 
 function renderTabs() {
-  document.querySelectorAll('.tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === state.activeTab);
+  document.querySelectorAll('.tab').forEach(tb => {
+    tb.classList.toggle('active', tb.dataset.tab === state.activeTab);
   });
 }
 
@@ -185,19 +222,27 @@ function renderFilters() {
   $('filter-range').hidden = state.dateMode !== 'range';
 }
 
-function renderBulkBar() {
-  const selected = byTab('pending').filter(o => state.sel[o.id]);
-  const show = state.activeTab === 'pending' && selected.length > 0;
-  $('bulk-bar').hidden = !show;
-  if (show) {
-    $('selected-count').textContent = selected.length;
-    $('confirm-count').textContent = selected.length;
-  }
-  const hasCancelPending = byTab('cancelled').some(o => o.needsConfirm);
-  $('cancel-alert').hidden = !(state.activeTab === 'cancelled' && hasCancelPending);
+// סרגל "בחר הכל" — מוצג בלשוניות עם פעולה מרוכזת, לפי הסינון הפעיל
+function renderListTools() {
+  const vis = selectableRows();
+  $('list-tools').hidden = vis.length === 0;
+  if (vis.length === 0) return;
+  const all = vis.every(o => state.sel[o.id]);
+  $('select-all-btn').textContent = all ? t('clearSelection') : t('selectAll');
 }
 
-const TH = c => `<th class="${c || ''}">`;
+function renderBulkBar() {
+  const selected = selectedRows();
+  $('bulk-bar').hidden = selected.length === 0;
+  if (selected.length === 0) return;
+  $('bulk-count').textContent = t('selectedCount', { n: selected.length });
+  const btn = $('open-confirm-btn');
+  const isApprove = state.activeTab === 'pending';
+  btn.className = isApprove ? 'btn btn-primary btn-sm' : 'btn btn-danger btn-sm';
+  btn.innerHTML = isApprove
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${t('approveHandling')} (${selected.length})`
+    : `${t('ackCancel')} (${selected.length})`;
+}
 
 function renderTable() {
   const tab = state.activeTab;
@@ -206,21 +251,22 @@ function renderTable() {
   const body = $('table-body');
   const empty = $('empty-state');
 
-  const emptyMsg = {
-    pending: 'אין הזמנות ממתינות בטווח שנבחר.',
-    approved: 'אין הזמנות מאושרות בטווח שנבחר.',
-    cancelled: 'אין הזמנות מבוטלות בטווח שנבחר.',
-  };
+  const emptyKey = { pending: 'emptyPending', approved: 'emptyApproved', cancelled: 'emptyCancelled' };
   empty.hidden = rows.length > 0;
-  empty.textContent = emptyMsg[tab];
+  empty.textContent = t(emptyKey[tab]);
+
+  // חיווי ההתראה בלשונית מבוטלות מנוהל גם ב-renderBulkBar; ברירת מחדל כאן
+  const hasCancelPending = byTab('cancelled').some(o => o.needsConfirm);
+  $('cancel-alert').hidden = !(tab === 'cancelled' && hasCancelPending && selectedRows().length === 0);
+
+  const vis = selectableRows();
+  const allChecked = vis.length > 0 && vis.every(o => state.sel[o.id]);
 
   if (tab === 'pending') {
-    const vis = byTab('pending');
-    const allChecked = vis.length > 0 && vis.every(o => state.sel[o.id]);
     head.innerHTML = `<tr>
       <th class="col-check"><input type="checkbox" class="check" id="check-all" ${allChecked ? 'checked' : ''}></th>
-      <th>מס' הזמנה</th><th>תאריך הזמנה</th><th>שם לקוח</th><th>מוצר</th><th>עיר</th>
-      <th class="col-center">כמות</th><th>עלות כולל מע"מ</th><th>חיווי</th><th class="col-action">פעולה</th>
+      <th>${t('thOrderNo')}</th><th>${t('thOrderDate')}</th><th>${t('thCustomer')}</th><th>${t('thProduct')}</th><th>${t('thCity')}</th>
+      <th class="col-center">${t('thQty')}</th><th>${t('thAmount')}</th><th>${t('thTag')}</th><th class="col-action">${t('thAction')}</th>
     </tr>`;
     body.innerHTML = rows.map(o => `
       <tr class="${rowClass(o)}" data-id="${o.id}">
@@ -236,16 +282,14 @@ function renderTable() {
         <td class="col-action" data-stop>
           <button class="row-approve-btn" data-approve="${o.id}">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            אשר טיפול
+            ${t('rowApprove')}
           </button>
         </td>
       </tr>`).join('');
-    const checkAll = $('check-all');
-    if (checkAll) checkAll.addEventListener('change', toggleAll);
   } else if (tab === 'approved') {
     head.innerHTML = `<tr>
-      <th class="col-first">מס' הזמנה</th><th>תאריך הזמנה</th><th>אושר בתאריך</th><th>שם לקוח</th><th>מוצר</th><th>עיר</th>
-      <th class="col-center">כמות</th><th>עלות כולל מע"מ</th><th>סטטוס</th>
+      <th class="col-first">${t('thOrderNo')}</th><th>${t('thOrderDate')}</th><th>${t('thApprovedAt')}</th><th>${t('thCustomer')}</th><th>${t('thProduct')}</th><th>${t('thCity')}</th>
+      <th class="col-center">${t('thQty')}</th><th>${t('thAmount')}</th><th>${t('thStatus')}</th>
     </tr>`;
     body.innerHTML = rows.map(o => `
       <tr data-id="${o.id}">
@@ -257,16 +301,18 @@ function renderTable() {
         <td class="col-city">${esc(o.city)}</td>
         <td class="col-qty">${o.qty}</td>
         <td class="col-amt">${fmtMoney(o.amt)}</td>
-        <td class="col-tag"><span class="tag tag-approved">טופל</span></td>
+        <td class="col-tag"><span class="tag tag-approved">${t('tagApproved')}</span></td>
       </tr>`).join('');
   } else {
     head.innerHTML = `<tr>
-      <th class="col-first">מס' הזמנה</th><th>תאריך הזמנה</th><th>שם לקוח</th><th>מוצר</th><th>עיר</th>
-      <th class="col-center">כמות</th><th>עלות כולל מע"מ</th><th>חיווי</th><th class="col-action">פעולה</th>
+      <th class="col-check"><input type="checkbox" class="check" id="check-all" ${allChecked ? 'checked' : ''} ${vis.length === 0 ? 'disabled' : ''}></th>
+      <th>${t('thOrderNo')}</th><th>${t('thOrderDate')}</th><th>${t('thCustomer')}</th><th>${t('thProduct')}</th><th>${t('thCity')}</th>
+      <th class="col-center">${t('thQty')}</th><th>${t('thAmount')}</th><th>${t('thTag')}</th><th class="col-action">${t('thAction')}</th>
     </tr>`;
     body.innerHTML = rows.map(o => `
       <tr class="${rowClass(o)}" data-id="${o.id}">
-        <td class="col-no col-first">#${o.no}</td>
+        <td class="col-check" data-stop>${o.needsConfirm ? `<input type="checkbox" class="check row-check" data-id="${o.id}" ${state.sel[o.id] ? 'checked' : ''}>` : ''}</td>
+        <td class="col-no">#${o.no}</td>
         <td class="col-date">${o.date}</td>
         <td class="col-cust">${esc(o.cust)}</td>
         <td class="col-prod">${esc(o.prod)}</td>
@@ -276,11 +322,15 @@ function renderTable() {
         <td class="col-tag">${tagHtml(o)}</td>
         <td class="col-action" data-stop>
           ${o.needsConfirm
-            ? `<button class="row-cancel-btn" data-cancel="${o.id}">אישור קבלת ביטול</button>`
+            ? `<button class="row-cancel-btn" data-cancel="${o.id}">${t('ackCancel')}</button>
+               <button class="row-reject-btn" data-reject="${o.id}">${t('cannotCancel')}</button>`
             : '<span class="dash-muted">—</span>'}
         </td>
       </tr>`).join('');
   }
+
+  const checkAll = $('check-all');
+  if (checkAll) checkAll.addEventListener('change', toggleAll);
 }
 
 function renderCards() {
@@ -290,26 +340,28 @@ function renderCards() {
     const meta = [
       `<span><b>${o.date.split(' ')[0]}</b></span>`,
       `<span>${esc(o.city)}</span>`,
-      `<span>כמות <b>${o.qty}</b></span>`,
+      `<span>${t('metaQty')} <b>${o.qty}</b></span>`,
       `<span><b>${fmtMoney(o.amt)}</b></span>`,
     ];
-    if (tab === 'approved') meta.splice(1, 0, `<span>אושר <b>${o.approvedAt.split(' ')[0]}</b></span>`);
+    if (tab === 'approved') meta.splice(1, 0, `<span>${t('metaApproved')} <b>${o.approvedAt.split(' ')[0]}</b></span>`);
 
     let actions = '';
     if (tab === 'pending') {
       actions = `<div class="order-card-actions" data-stop>
         <button class="row-approve-btn" data-approve="${o.id}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          אשר טיפול
+          ${t('rowApprove')}
         </button>
       </div>`;
     } else if (tab === 'cancelled' && o.needsConfirm) {
       actions = `<div class="order-card-actions" data-stop>
-        <button class="row-cancel-btn" data-cancel="${o.id}">אישור קבלת ביטול</button>
+        <button class="row-cancel-btn" data-cancel="${o.id}">${t('ackCancel')}</button>
+        <button class="row-reject-btn" data-reject="${o.id}">${t('cannotCancel')}</button>
       </div>`;
     }
 
-    const check = tab === 'pending'
+    const selectable = tab === 'pending' || (tab === 'cancelled' && o.needsConfirm);
+    const check = selectable
       ? `<input type="checkbox" class="check row-check" data-id="${o.id}" data-stop ${state.sel[o.id] ? 'checked' : ''}>`
       : '';
 
@@ -327,8 +379,16 @@ function renderCards() {
 }
 
 function renderModals() {
-  // מודאל אישור טיפול
-  const selected = byTab('pending').filter(o => state.sel[o.id]);
+  // מודאל אישור מרוכז
+  const selected = selectedRows();
+  const isApprove = state.confirmMode === 'approve';
+  $('confirm-title').textContent = t(isApprove ? 'confirmApproveTitle' : 'confirmCancelTitle');
+  $('confirm-desc').textContent = t(isApprove ? 'confirmApproveDesc' : 'confirmCancelDesc');
+  const doBtn = $('do-confirm-btn');
+  doBtn.className = isApprove ? 'btn btn-primary' : 'btn btn-danger';
+  doBtn.innerHTML = isApprove
+    ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${t('approveHandling')}`
+    : t('ackCancel');
   $('confirm-total').textContent = selected.length;
   $('confirm-list').innerHTML = selected.map(o => `
     <div class="confirm-row">
@@ -343,27 +403,32 @@ function renderModals() {
   const o = state.detailId ? state.orders.find(x => x.id === state.detailId) : null;
   $('modal-detail').hidden = !o;
   if (!o) return;
-  const t = statusTag(o);
+  const tg = statusTag(o);
   $('detail-no').textContent = o.no;
   $('detail-tag').innerHTML = tagHtml(o);
   $('detail-sub').textContent = `${o.cust} · ${o.date}`;
   const fields = [
-    ['ספק', SUPPLIER.name], ["מס' הזמנה", '#' + o.no], ['תאריך הזמנה', o.date],
-    ['שם לקוח', o.cust], ['אימייל לקוח', o.email], ['טלפון לקוח', o.phone],
-    ['מוצר', o.prod], ['מק"ט/ברקוד', o.sku], ['מאפייני וריאציה', o.variation],
-    ['מק"ט וריאציה', o.varSku], ['כמות', String(o.qty)], ['עיר', o.city],
-    ['רחוב', o.street], ['מספר בית', o.house], ['מספר דירה', o.apt],
-    ['תיאור משלוח', o.shipDesc], ['הערות משלוח', o.notes],
-    ['עלות משלוח פנימית', fmtMoney(o.internalShip)], ['עלות כולל מע"מ', fmtMoney(o.amt)],
-    ['זמן אספקה', o.deliveryTime],
+    ['fSupplier', supplierDisplayName()], ['fOrderNo', '#' + o.no], ['fOrderDate', o.date],
+    ['fCustName', o.cust], ['fCustEmail', o.email], ['fCustPhone', o.phone],
+    ['fProduct', o.prod], ['fSku', o.sku], ['fVariation', o.variation],
+    ['fVarSku', o.varSku], ['fQty', String(o.qty)], ['fCity', o.city],
+    ['fStreet', o.street], ['fHouse', o.house], ['fApt', o.apt],
+    ['fShipDesc', o.shipDesc], ['fShipNotes', o.notes],
+    ['fInternalShip', fmtMoney(o.internalShip)], ['fTotal', fmtMoney(o.amt)],
+    ['fDelivery', o.deliveryTime],
   ];
-  $('detail-grid').innerHTML = fields.map(([label, value]) => `
+  $('detail-grid').innerHTML = fields.map(([key, value]) => `
     <div class="detail-cell">
-      <div class="detail-cell-label">${esc(label)}</div>
+      <div class="detail-cell-label">${esc(t(key))}</div>
       <div class="detail-cell-value">${esc(value)}</div>
     </div>`).join('');
   $('approve-detail-btn').hidden = o.status !== 'pending';
-  $('cancel-detail-btn').hidden = !t.needsConfirm;
+  $('cancel-detail-btn').hidden = !tg.needsConfirm;
+  $('reject-detail-btn').hidden = !tg.needsConfirm;
+}
+
+function supplierDisplayName() {
+  return LANG === 'en' && SUPPLIER.nameEn ? SUPPLIER.nameEn : SUPPLIER.name;
 }
 
 /* ---------- אירועים ---------- */
@@ -390,9 +455,9 @@ function bindEvents() {
     render();
   });
 
-  // לשוניות
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => { state.activeTab = t.dataset.tab; render(); });
+  // לשוניות — הבחירה מתאפסת במעבר לשונית
+  document.querySelectorAll('.tab').forEach(tb => {
+    tb.addEventListener('click', () => { state.activeTab = tb.dataset.tab; state.sel = {}; render(); });
   });
 
   // סינון תאריכים
@@ -407,12 +472,11 @@ function bindEvents() {
   $('export-btn').addEventListener('click', exportExcel);
 
   // בחירה מרובה
+  $('select-all-btn').addEventListener('click', toggleAll);
   $('clear-sel-btn').addEventListener('click', () => { state.sel = {}; render(); });
-  $('open-confirm-btn').addEventListener('click', () => {
-    if (byTab('pending').some(o => state.sel[o.id])) $('modal-confirm').hidden = false;
-  });
+  $('open-confirm-btn').addEventListener('click', openConfirmModal);
   $('close-confirm-btn').addEventListener('click', () => { $('modal-confirm').hidden = true; });
-  $('do-approve-btn').addEventListener('click', approveSelected);
+  $('do-confirm-btn').addEventListener('click', doBulkConfirm);
 
   // מודאל פרטים
   $('close-detail-btn').addEventListener('click', () => { state.detailId = null; render(); });
@@ -430,6 +494,11 @@ function bindEvents() {
     state.detailId = null;
     if (id) confirmCancel(id);
   });
+  $('reject-detail-btn').addEventListener('click', () => {
+    const id = state.detailId;
+    state.detailId = null;
+    if (id) rejectCancel(id);
+  });
 
   // האצלת אירועים לשורות טבלה ולכרטיסים
   document.querySelector('.panel-body').addEventListener('click', e => {
@@ -437,6 +506,8 @@ function bindEvents() {
     if (approveBtn) { approveOne(approveBtn.dataset.approve); return; }
     const cancelBtn = e.target.closest('[data-cancel]');
     if (cancelBtn) { confirmCancel(cancelBtn.dataset.cancel); return; }
+    const rejectBtn = e.target.closest('[data-reject]');
+    if (rejectBtn) { rejectCancel(rejectBtn.dataset.reject); return; }
     const check = e.target.closest('.row-check');
     if (check) { toggleSel(check.dataset.id); return; }
     if (e.target.closest('[data-stop]')) return;
@@ -445,7 +516,8 @@ function bindEvents() {
   });
 }
 
-$('supplier-name').textContent = SUPPLIER.name;
-$('supplier-avatar').textContent = SUPPLIER.name.charAt(0);
+applyStaticI18n();
+$('supplier-name').textContent = supplierDisplayName();
+$('supplier-avatar').textContent = supplierDisplayName().charAt(0);
 bindEvents();
 render();
