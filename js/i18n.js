@@ -6,6 +6,7 @@ const STRINGS = {
   he: {
     appTitle: 'פורטל ספקים',
     brand: 'פורטל ספקים',
+    brandFull: 'מערכת דיווח הספקים של בומביי',
     signInTitle: 'כניסה לחשבון',
     signInSub: 'הזינו את מספר הטלפון הרשום במערכת. נשלח אליכם קוד חד־פעמי לאימות.',
     phoneLabel: 'מספר טלפון',
@@ -106,6 +107,7 @@ const STRINGS = {
   en: {
     appTitle: 'Supplier Portal',
     brand: 'Supplier Portal',
+    brandFull: 'Bombay Supplier Reporting System',
     signInTitle: 'Sign in',
     signInSub: 'Enter the phone number registered in the system. We will send you a one-time verification code.',
     phoneLabel: 'Phone number',
