@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>פורטל ספקים</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235348c7'/%3E%3Ctext x='16' y='22' font-size='18' font-weight='800' fill='%23fff' text-anchor='middle' font-family='Arial'%3Eס%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- מסך התחברות: טלפון -->
+<section id="screen-phone" class="auth-page" hidden>
+  <div class="auth-card">
+    <div class="brand">
+      <div class="brand-logo">ס</div>
+      <div class="brand-name">פורטל ספקים</div>
+    </div>
+    <h1 class="auth-title">כניסה לחשבון</h1>
+    <p class="auth-sub">הזינו את מספר הטלפון הרשום במערכת. נשלח אליכם קוד חד־פעמי לאימות.</p>
+    <label class="field-label" for="phone-input">מספר טלפון</label>
+    <input id="phone-input" inputmode="tel" placeholder="050-0000000" dir="ltr" class="field-input">
+    <button id="send-code-btn" class="btn btn-primary btn-block">שליחת קוד אימות</button>
+    <p class="auth-note">הגישה מיועדת לספקים מורשים בלבד.</p>
+  </div>
+</section>
+
+<!-- מסך התחברות: קוד אימות -->
+<section id="screen-otp" class="auth-page" hidden>
+  <div class="auth-card">
+    <div class="brand">
+      <div class="brand-logo">ס</div>
+      <div class="brand-name">פורטל ספקים</div>
+    </div>
+    <h1 class="auth-title">אימות קוד</h1>
+    <p class="auth-sub">שלחנו קוד בן 6 ספרות למספר <span id="phone-masked" class="phone-masked" dir="ltr"></span></p>
+    <input id="otp-input" inputmode="numeric" placeholder="••••••" dir="ltr" class="field-input otp-input" maxlength="6">
+    <button id="verify-btn" class="btn btn-primary btn-block">כניסה</button>
+    <div class="otp-links">
+      <a id="back-to-phone" class="link-muted">→ שינוי מספר</a>
+      <a id="resend-code" class="link">שליחה חוזרת של הקוד</a>
+    </div>
+  </div>
+</section>
+
+<!-- פאנל הזמנות -->
+<section id="screen-panel" hidden>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-logo brand-logo-sm">ס</div>
+        <div class="brand-name">פורטל ספקים</div>
+      </div>
+      <div class="topbar-user">
+        <div class="user-meta">
+          <div id="supplier-name" class="user-name"></div>
+          <div class="user-role">ספק · #8</div>
+        </div>
+        <div id="supplier-avatar" class="user-avatar"></div>
+        <button id="logout-btn" class="icon-btn" title="יציאה">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">ההזמנות שלי</h1>
+        <p class="page-sub">אישור טיפול בהזמנות, מעקב וייצוא נתונים.</p>
+      </div>
+      <div class="page-actions">
+        <div class="seg" role="group" aria-label="סינון תאריכים">
+          <button class="seg-btn" data-mode="all">הכל</button>
+          <button class="seg-btn" data-mode="day">יום בודד</button>
+          <button class="seg-btn" data-mode="range">טווח</button>
+        </div>
+        <input type="date" id="filter-day" class="date-input" hidden>
+        <div id="filter-range" class="range-wrap" hidden>
+          <input type="date" id="filter-from" class="date-input">
+          <span class="range-sep">עד</span>
+          <input type="date" id="filter-to" class="date-input">
+        </div>
+        <button id="export-btn" class="btn btn-secondary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          ייצוא לאקסל
+        </button>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" data-tab="pending" role="tab">ממתינות <span id="badge-pending" class="badge"></span></button>
+      <button class="tab" data-tab="approved" role="tab">מאושרות <span id="badge-approved" class="badge"></span></button>
+      <button class="tab" data-tab="cancelled" role="tab">מבוטלות <span id="badge-cancelled" class="badge"></span></button>
+    </div>
+
+    <div class="panel-body">
+      <div id="bulk-bar" class="bulk-bar" hidden>
+        <div class="bulk-count">נבחרו <span id="selected-count"></span> הזמנות</div>
+        <div class="bulk-actions">
+          <button id="clear-sel-btn" class="btn btn-secondary btn-sm">ביטול בחירה</button>
+          <button id="open-confirm-btn" class="btn btn-primary btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            אישור טיפול (<span id="confirm-count"></span>)
+          </button>
+        </div>
+      </div>
+      <div id="cancel-alert" class="cancel-alert" hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>קיימות הזמנות שבוטלו לאחר שטופלו — נדרש אישור קבלת הביטול.</span>
+      </div>
+      <div class="table-wrap">
+        <table class="orders-table">
+          <thead id="table-head"></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div id="cards-list" class="cards-list"></div>
+      <div id="empty-state" class="empty-state" hidden></div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot dot-pending"></span>ממתין לטיפול</div>
+      <div class="legend-item"><span class="legend-dot dot-overdue"></span>מעל 24 שעות ללא טיפול</div>
+      <div class="legend-item"><span class="legend-dot dot-approved"></span>טופל</div>
+      <div class="legend-hint">לחיצה על שורה פותחת את כרטיס ההזמנה המלא</div>
+    </div>
+
+  </main>
+
+  <!-- מודאל אישור טיפול -->
+  <div id="modal-confirm" class="modal-overlay" hidden>
+    <div class="modal modal-confirm">
+      <div class="modal-head">
+        <h2>אישור טיפול בהזמנות</h2>
+        <p>ההזמנות הבאות יסומנו כ"טופלו" ויעברו ללשונית "מאושרות". הפעולה מתועדת עם חותמת זמן.</p>
+      </div>
+      <div id="confirm-list" class="confirm-list"></div>
+      <div class="modal-foot">
+        <div class="modal-total">סה"כ <span id="confirm-total"></span> הזמנות</div>
+        <div class="modal-btns">
+          <button id="close-confirm-btn" class="btn btn-secondary">ביטול</button>
+          <button id="do-approve-btn" class="btn btn-primary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            אישור טיפול
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- מודאל פרטי הזמנה -->
+  <div id="modal-detail" class="modal-overlay" hidden>
+    <div class="modal modal-detail">
+      <div class="detail-head">
+        <div>
+          <div class="detail-title-row">
+            <h2>הזמנה #<span id="detail-no"></span></h2>
+            <span id="detail-tag"></span>
+          </div>
+          <p id="detail-sub" class="detail-sub"></p>
+        </div>
+        <button id="close-detail-btn" class="icon-btn" title="סגירה">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="detail-body">
+        <div id="detail-grid" class="detail-grid"></div>
+      </div>
+      <div class="modal-foot detail-foot">
+        <button id="close-detail-btn2" class="btn btn-secondary">סגירה</button>
+        <button id="approve-detail-btn" class="btn btn-primary" hidden>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          אישור טיפול
+        </button>
+        <button id="cancel-detail-btn" class="btn btn-danger" hidden>אישור קבלת ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- טוסט -->
+  <div id="toast" class="toast" hidden>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7dd3a0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    <span id="toast-text"></span>
+  </div>
+
+</section>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
