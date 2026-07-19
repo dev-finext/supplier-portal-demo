@@ -6,6 +6,7 @@ const state = {
   activeTab: 'pending',   // pending | approved | cancelled
   sel: {},                // בחירה מרובה: { orderId: true }
   confirmMode: 'approve', // approve | cancelAck — מצב המודאל המרוכז
+  rejectId: null,         // ההזמנה שממתינה לסיבת "לא ניתן לבטל"
   detailId: null,
   dateMode: 'all',        // all | day | range
   day: '', from: '', to: '',
@@ -113,11 +114,37 @@ function confirmCancel(id) {
   showToast(t('toastCancelAck'));
 }
 
-// "לא ניתן לבטל" — אותה פעולה בצד הספק, אך הסטטוס הסופי שונה
-function rejectCancel(id) {
+// "לא ניתן לבטל" — נפתח מודאל עם שדה סיבה חובה
+function openRejectModal(id) {
+  state.rejectId = id;
   const o = state.orders.find(x => x.id === id);
-  if (o) { o.needsConfirm = false; o.cancelResolution = 'rejected'; }
-  delete state.sel[id];
+  $('reject-order-ref').textContent = o ? `#${o.no} · ${o.cust}` : '';
+  const input = $('reject-reason');
+  input.value = '';
+  input.classList.remove('field-invalid');
+  $('reject-error').hidden = true;
+  $('modal-reject').hidden = false;
+  input.focus();
+}
+
+function closeRejectModal() {
+  state.rejectId = null;
+  $('modal-reject').hidden = true;
+}
+
+// אותה פעולה כמו אישור קבלת ביטול בצד הספק, אך עם סטטוס סופי שונה וסיבה מתועדת
+function doReject() {
+  const reason = $('reject-reason').value.trim();
+  if (!reason) {
+    $('reject-reason').classList.add('field-invalid');
+    $('reject-error').hidden = false;
+    $('reject-reason').focus();
+    return;
+  }
+  const o = state.orders.find(x => x.id === state.rejectId);
+  if (o) { o.needsConfirm = false; o.cancelResolution = 'rejected'; o.rejectReason = reason; }
+  delete state.sel[state.rejectId];
+  closeRejectModal();
   render();
   showToast(t('toastCannotCancel'));
 }
@@ -417,6 +444,7 @@ function renderModals() {
     ['fInternalShip', fmtMoney(o.internalShip)], ['fTotal', fmtMoney(o.amt)],
     ['fDelivery', o.deliveryTime],
   ];
+  if (o.rejectReason) fields.push(['fRejectReason', o.rejectReason]);
   $('detail-grid').innerHTML = fields.map(([key, value]) => `
     <div class="detail-cell">
       <div class="detail-cell-label">${esc(t(key))}</div>
@@ -448,10 +476,11 @@ function bindEvents() {
     e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
   });
   $('logout-btn').addEventListener('click', () => {
-    Object.assign(state, { screen: 'phone', phone: '', sel: {}, detailId: null });
+    Object.assign(state, { screen: 'phone', phone: '', sel: {}, detailId: null, rejectId: null });
     $('phone-input').value = '';
     $('otp-input').value = '';
     $('modal-confirm').hidden = true;
+    $('modal-reject').hidden = true;
     render();
   });
 
@@ -497,7 +526,16 @@ function bindEvents() {
   $('reject-detail-btn').addEventListener('click', () => {
     const id = state.detailId;
     state.detailId = null;
-    if (id) rejectCancel(id);
+    render();
+    if (id) openRejectModal(id);
+  });
+
+  // מודאל סיבת "לא ניתן לבטל"
+  $('close-reject-btn').addEventListener('click', closeRejectModal);
+  $('do-reject-btn').addEventListener('click', doReject);
+  $('reject-reason').addEventListener('input', () => {
+    $('reject-reason').classList.remove('field-invalid');
+    $('reject-error').hidden = true;
   });
 
   // האצלת אירועים לשורות טבלה ולכרטיסים
@@ -507,7 +545,7 @@ function bindEvents() {
     const cancelBtn = e.target.closest('[data-cancel]');
     if (cancelBtn) { confirmCancel(cancelBtn.dataset.cancel); return; }
     const rejectBtn = e.target.closest('[data-reject]');
-    if (rejectBtn) { rejectCancel(rejectBtn.dataset.reject); return; }
+    if (rejectBtn) { openRejectModal(rejectBtn.dataset.reject); return; }
     const check = e.target.closest('.row-check');
     if (check) { toggleSel(check.dataset.id); return; }
     if (e.target.closest('[data-stop]')) return;

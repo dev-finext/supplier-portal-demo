@@ -152,6 +152,29 @@
     </div>
   </div>
 
+  <!-- מודאל "לא ניתן לבטל" — סיבה חובה -->
+  <div id="modal-reject" class="modal-overlay" hidden>
+    <div class="modal modal-confirm">
+      <div class="modal-head">
+        <h2 data-i18n="rejectTitle">לא ניתן לבטל</h2>
+        <p data-i18n="rejectDesc">ההזמנה תסומן כ"לא ניתן לבטל" והסיבה תתועד בכרטיס ההזמנה.</p>
+      </div>
+      <div class="reject-body">
+        <div id="reject-order-ref" class="reject-order-ref"></div>
+        <label class="field-label" for="reject-reason" data-i18n="rejectReasonLabel">סיבת אי־ביטול</label>
+        <textarea id="reject-reason" class="field-textarea" rows="3" data-i18n-placeholder="rejectReasonPlaceholder" placeholder="פרטו מדוע לא ניתן לבטל את ההזמנה…"></textarea>
+        <div id="reject-error" class="field-error" data-i18n="rejectReasonRequired" hidden>חובה למלא את הסיבה</div>
+      </div>
+      <div class="modal-foot">
+        <span></span>
+        <div class="modal-btns">
+          <button id="close-reject-btn" class="btn btn-secondary" data-i18n="cancel">ביטול</button>
+          <button id="do-reject-btn" class="btn btn-danger" data-i18n="cannotCancel">לא ניתן לבטל</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- מודאל פרטי הזמנה -->
   <div id="modal-detail" class="modal-overlay" hidden>
     <div class="modal modal-detail">
